@@ -54,10 +54,12 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({
             </h2>
 
             <p className="text-xs md:text-sm text-gray-400 mb-6 max-w-md mx-auto leading-relaxed">
-              Drop your <code className="text-blue-300 bg-blue-950/50 px-1 py-0.5 rounded">.gemini/antigravity</code> folder,
-              a <code className="text-purple-300 bg-purple-950/50 px-1 py-0.5 rounded">brain/</code> folder, a single conversation, or a <code className="text-indigo-300 bg-indigo-950/50 px-1 py-0.5 rounded">.zip</code>.
+              Drop your parent <code className="text-blue-300 bg-blue-950/50 px-1 py-0.5 rounded">.gemini/antigravity</code> folder (recommended)
+              or drop both <code className="text-purple-300 bg-purple-950/50 px-1 py-0.5 rounded">brain/</code> and <code className="text-amber-300 bg-amber-950/50 px-1 py-0.5 rounded">annotations/</code>.
               <br />
-              <strong className="text-gray-300">AgyLens auto-detects everything</strong> and separates active, pinned, and archived chats automatically!
+              <span className="text-[11.5px] text-gray-400 block mt-1.5">
+                💡 <strong className="text-gray-300">Archive & Titles Tip:</strong> Your exact chat titles and <strong>100+ archived chats</strong> live inside the <code className="text-purple-300">annotations/</code> folder! Dropping the parent <code className="text-blue-300">antigravity</code> folder unlocks them automatically.
+              </span>
             </p>
 
             {/* Action Buttons */}

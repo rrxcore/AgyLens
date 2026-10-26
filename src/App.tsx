@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { AlertCircle, FolderOpen } from 'lucide-react';
 import type { 
   ActiveFilterTab, 
   ConversationDetail, 
@@ -8,7 +9,8 @@ import {
   getFilesFromDataTransfer, 
   processIngestedFiles, 
   extractFilesFromZip,
-  type VirtualFile 
+  type VirtualFile,
+  type IngestionCatalog
 } from './parser/smartScanner';
 import { SAMPLE_CONVERSATIONS, SAMPLE_DETAIL_MAP } from './sample/sampleSession';
 import { Header } from './components/layout/Header';
@@ -23,9 +25,12 @@ export function App() {
   const [activeFilter, setActiveFilter] = useState<ActiveFilterTab>('all');
   const [isDragging, setIsDragging] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [hasAnnotations, setHasAnnotations] = useState<boolean>(true);
+  const [dismissWarning, setDismissWarning] = useState(false);
 
   const folderInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+  const catalogRef = useRef<IngestionCatalog | undefined>(undefined);
 
   // Detail loader reference
   const detailLoaderRef = useRef<((id: string) => Promise<ConversationDetail>) | null>(null);
@@ -35,6 +40,7 @@ export function App() {
     activeCount: conversations.filter(c => !c.isArchived).length,
     archivedCount: conversations.filter(c => c.isArchived).length,
     pinnedCount: conversations.filter(c => c.isPinned).length,
+    hasAnnotations,
   };
 
   const handleSelectConversation = useCallback(async (id: string) => {
@@ -56,20 +62,27 @@ export function App() {
     }
   }, []);
 
-  // Process any list of VirtualFiles
+  // Process any list of VirtualFiles with incremental catalog merging
   const handleIngestVirtualFiles = async (virtualFiles: VirtualFile[]) => {
     if (virtualFiles.length === 0) return;
     setIsScanning(true);
 
     try {
-      const result = await processIngestedFiles(virtualFiles);
+      const result = await processIngestedFiles(virtualFiles, catalogRef.current);
+      catalogRef.current = result.catalog;
       setConversations(result.conversations);
+      setHasAnnotations(result.stats.hasAnnotations);
       detailLoaderRef.current = result.loadConversationDetail;
 
-      // Automatically select the first or first active conversation
-      const firstActive = result.conversations.find(c => !c.isArchived) || result.conversations[0];
-      if (firstActive) {
-        handleSelectConversation(firstActive.id);
+      // Automatically select the first or first active conversation if none selected
+      if (!selectedId || !result.conversations.find(c => c.id === selectedId)) {
+        const firstActive = result.conversations.find(c => !c.isArchived) || result.conversations[0];
+        if (firstActive) {
+          handleSelectConversation(firstActive.id);
+        }
+      } else {
+        // Refresh detail for currently selected
+        handleSelectConversation(selectedId);
       }
     } catch (err) {
       console.error('Error processing files:', err);
@@ -142,7 +155,9 @@ export function App() {
 
   // Load Demo Data
   const handleLoadDemo = () => {
+    catalogRef.current = undefined;
     setConversations(SAMPLE_CONVERSATIONS);
+    setHasAnnotations(true);
     detailLoaderRef.current = async (id: string) => {
       return SAMPLE_DETAIL_MAP[id] || {
         meta: SAMPLE_CONVERSATIONS.find(c => c.id === id)!,
@@ -241,6 +256,34 @@ export function App() {
         onExportMarkdown={currentDetail ? handleExportMarkdown : undefined}
       />
 
+      {/* Missing Annotations Smart Banner */}
+      {conversations.length > 0 && !hasAnnotations && !dismissWarning && (
+        <div className="bg-gradient-to-r from-amber-950/80 via-purple-950/60 to-blue-950/80 border-b border-amber-500/30 px-4 py-2.5 text-xs flex items-center justify-between z-20">
+          <div className="flex items-center gap-2.5 text-amber-200">
+            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 animate-pulse" />
+            <span>
+              <strong>Notice:</strong> Only <code className="bg-black/30 px-1 py-0.5 rounded text-amber-300">brain</code> folder was loaded. Your chat titles, pinned chats, and <strong>100+ archived chats</strong> are stored in the sibling <code className="bg-black/30 px-1 py-0.5 rounded text-purple-300">annotations</code> folder!
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => folderInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-[11px] font-medium transition-all cursor-pointer shadow-sm active:scale-95"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-amber-300" />
+              <span>Select "annotations" or "antigravity" Folder</span>
+            </button>
+            <button
+              onClick={() => setDismissWarning(true)}
+              className="text-gray-400 hover:text-white px-1.5 py-0.5 text-xs"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* App Body */}
       <div className="flex-1 flex overflow-hidden relative">
         {conversations.length === 0 ? (
@@ -276,9 +319,9 @@ export function App() {
             {isDragging && (
               <div className="absolute inset-0 bg-blue-950/40 backdrop-blur-sm border-2 border-dashed border-blue-500 flex flex-col items-center justify-center z-50 pointer-events-none">
                 <div className="p-6 rounded-2xl bg-[#141822] border border-blue-500/40 shadow-2xl text-center space-y-2">
-                  <h3 className="text-base font-bold text-white">Drop to Ingest Conversations</h3>
+                  <h3 className="text-base font-bold text-white">Drop to Merge Conversations or Annotations</h3>
                   <p className="text-xs text-blue-300">
-                    AgyLens will auto-detect directories, annotations, and transcripts.
+                    AgyLens will auto-correlate annotations, titles, and archive statuses.
                   </p>
                 </div>
               </div>

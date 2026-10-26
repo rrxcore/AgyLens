@@ -114,7 +114,14 @@ export async function extractFilesFromZip(zipFile: File | Blob): Promise<Virtual
   return virtualFiles;
 }
 
+export interface IngestionCatalog {
+  annotationsMap: Map<string, ParsedAnnotation>;
+  transcriptsMap: Map<string, VirtualFile>;
+  artifactsMap: Map<string, VirtualFile[]>;
+}
+
 export interface IngestionResult {
+  catalog: IngestionCatalog;
   conversations: ConversationMeta[];
   loadConversationDetail: (id: string) => Promise<ConversationDetail>;
   stats: {
@@ -122,20 +129,27 @@ export interface IngestionResult {
     activeCount: number;
     archivedCount: number;
     pinnedCount: number;
+    hasAnnotations: boolean;
   };
 }
 
 /**
- * Core Smart Signature Matcher:
- * Automatically normalizes any dropped path (Root Antigravity, Brain folder, Single Chat, or Zip)
- * and resolves everything to its rightful place ("khud ke jagah pe khud ajayega")!
+ * Core Smart Signature Matcher with Incremental Merging:
+ * Auto-detects and correlates Root Antigravity, Brain folder, Annotations folder, or Single Chat.
  */
-export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise<IngestionResult> {
-  const annotationsMap = new Map<string, ParsedAnnotation>();
-  const transcriptsMap = new Map<string, VirtualFile>();
-  const artifactsMap = new Map<string, VirtualFile[]>();
+export async function processIngestedFiles(
+  virtualFiles: VirtualFile[],
+  existingCatalog?: IngestionCatalog
+): Promise<IngestionResult> {
+  const catalog: IngestionCatalog = {
+    annotationsMap: new Map(existingCatalog?.annotationsMap || []),
+    transcriptsMap: new Map(existingCatalog?.transcriptsMap || []),
+    artifactsMap: new Map(existingCatalog?.artifactsMap || []),
+  };
 
-  // 1. Segregate files by role regardless of folder depth
+  const { annotationsMap, transcriptsMap, artifactsMap } = catalog;
+
+  // 1. Segregate incoming files by role regardless of folder depth
   for (const file of virtualFiles) {
     const normalizedPath = file.path.replace(/\\/g, '/');
 
@@ -157,7 +171,6 @@ export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise
     if (normalizedPath.endsWith('transcript.jsonl') || normalizedPath.endsWith('transcript_full.jsonl')) {
       const uuidMatch = normalizedPath.match(UUID_REGEX);
       const convId = uuidMatch ? uuidMatch[1] : (normalizedPath.split('/').slice(-3)[0] || 'single-session');
-      // Prefer transcript.jsonl over transcript_full.jsonl for fast index, unless only full exists
       if (!transcriptsMap.has(convId) || normalizedPath.endsWith('transcript.jsonl')) {
         transcriptsMap.set(convId, file);
       }
@@ -193,10 +206,9 @@ export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise
     let stepCount = 0;
     let lastTime = new Date().toISOString();
 
-    // If we have a transcript file, read the first few lines to get fast title/preview/timestamp
+    // If we have a transcript file, read fast title/preview/timestamp
     if (transcriptFile) {
       try {
-        // Read transcript to extract basic metadata
         const text = await transcriptFile.readText();
         const parsed = parseTranscript(text);
         stepCount = parsed.stepCount;
@@ -223,7 +235,7 @@ export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise
       : lastTime;
     const relativeTimeStr = formatRelativeTime(timestampToUse);
 
-    // Running indicator: if last view or last update was within past 30 mins and not archived
+    // Running indicator
     const nowSec = Math.floor(Date.now() / 1000);
     const timeSec = typeof timestampToUse === 'number' 
       ? timestampToUse 
@@ -245,7 +257,7 @@ export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise
     });
   }
 
-  // 3. Sort conversations: Pinned first, then newest first
+  // 3. Sort: Pinned first, then newest first
   conversations.sort((a, b) => {
     if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
     return new Date(b.lastModifiedTime).getTime() - new Date(a.lastModifiedTime).getTime();
@@ -301,6 +313,7 @@ export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise
   const activeCount = conversations.length - archivedCount;
 
   return {
+    catalog,
     conversations,
     loadConversationDetail,
     stats: {
@@ -308,6 +321,7 @@ export async function processIngestedFiles(virtualFiles: VirtualFile[]): Promise
       activeCount,
       archivedCount,
       pinnedCount,
+      hasAnnotations: annotationsMap.size > 0,
     },
   };
 }
