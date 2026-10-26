@@ -165,7 +165,7 @@ export function App() {
 
     for (const step of steps) {
       if (step.type === 'USER_INPUT') {
-        md += `### 👤 User\n\n${step.cleanUserPrompt || step.content}\n\n`;
+        md += `### 👤 ${step.userName || meta.userName || 'Developer'}\n\n${step.cleanUserPrompt || step.content}\n\n`;
       } else if (step.type === 'PLANNER_RESPONSE') {
         md += `### 🤖 Antigravity Agent\n\n`;
         if (step.thinking) {

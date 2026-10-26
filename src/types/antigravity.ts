@@ -10,6 +10,7 @@ export interface ConversationMeta {
   id: string;
   title: string;
   preview?: string;
+  userName?: string;
   stepCount: number;
   isArchived: boolean;
   isPinned: boolean;
@@ -28,6 +29,7 @@ export interface MessageStep {
   type: 'USER_INPUT' | 'PLANNER_RESPONSE' | 'GENERIC' | 'EPHEMERAL_MESSAGE' | string;
   status: string;
   createdAt: string;
+  userName?: string;
   content?: string;
   cleanUserPrompt?: string;
   thinking?: string;
